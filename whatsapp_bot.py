@@ -12,53 +12,67 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
 
-# ========= إعداد Chrome =========
-profile_path = os.path.join(tempfile.gettempdir(), "wa_engine_profile")
+def log(msg):
+    print(msg)
 
-options = webdriver.ChromeOptions()
-options.add_argument(f"--user-data-dir={profile_path}")
-options.add_argument("--profile-directory=Default")
-options.add_argument("--disable-gpu")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
 
-driver = webdriver.Chrome(
-    service=Service(ChromeDriverManager().install()),
-    options=options
-)
+try:
+    # ========= إعداد Chrome =========
+    profile_path = os.path.join(tempfile.gettempdir(), "wa_engine_profile")
 
-# ========= فتح واتساب =========
-driver.get("https://web.whatsapp.com")
-print("🟢 لو أول مرة: اعمل Scan QR")
-time.sleep(25)
+    options = webdriver.ChromeOptions()
+    options.add_argument(f"--user-data-dir={profile_path}")
+    options.add_argument("--profile-directory=Default")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
 
-# ========= قراءة الإكسيل =========
-file_path = "WhatsApp Business.xlsm"
-sheet_name = "Send"
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=options
+    )
 
-df = pd.read_excel(file_path, sheet_name=sheet_name)
+    wait = WebDriverWait(driver, 60)
 
-# ========= إرسال الرسائل =========
-for i, row in df.iterrows():
+    # ========= فتح واتساب =========
+    driver.get("https://web.whatsapp.com")
+    log("🟢 افتح واتساب... لو أول مرة اعمل Scan QR")
 
-    phone = str(row.iloc[0]).strip()    # Phone
-    name = str(row.iloc[1]).strip()     # Name
-    message = str(row.iloc[2]).strip()  # Message
-    sent = str(row.iloc[3]).strip()     # Sent
+    # ✅ استنى لحد ما الحساب يفتح فعليًا (قائمة الشات)
+    wait.until(
+        EC.presence_of_element_located(
+            (By.ID, "pane-side")
+        )
+    )
 
-    if sent.lower() == "sent":
-        continue
+    log("✅ واتساب جاهز والدردشات اتحملت")
 
-    if phone == "" or message == "":
-        continue
+    # ========= قراءة الإكسيل =========
+    file_path = "WhatsApp Business.xlsm"
+    sheet_name = "Send"
 
-    message = message.replace("{{name}}", name)
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
 
-    driver.get(f"https://web.whatsapp.com/send?phone={phone}")
+    # ========= إرسال الرسائل =========
+    for i, row in df.iterrows():
 
-    try:
-        wait = WebDriverWait(driver, 30)
+        phone = str(row.iloc[0]).strip()
+        name = str(row.iloc[1]).strip()
+        message = str(row.iloc[2]).strip()
+        sent = str(row.iloc[3]).strip()
 
+        if sent.lower() == "sent":
+            continue
+
+        if phone == "" or message == "":
+            continue
+
+        message = message.replace("{{name}}", name)
+
+        log(f"➡️ فتح شات {phone}")
+        driver.get(f"https://web.whatsapp.com/send?phone={phone}")
+
+        # ✅ استنى صندوق الرسالة الحقيقي
         box = wait.until(
             EC.presence_of_element_located(
                 (By.XPATH, '//div[@contenteditable="true" and @role="textbox"]')
@@ -71,18 +85,22 @@ for i, row in df.iterrows():
         time.sleep(1)
         box.send_keys(Keys.ENTER)
 
-        print(f"✅ Sent to {phone}")
+        log(f"✅ اتبعتت لـ {phone}")
         df.at[i, df.columns[3]] = "Sent"
 
-        time.sleep(7)
+        time.sleep(8)  # أمان
 
-    except Exception as e:
-        print(f"❌ Failed to send to {phone}")
-        continue
+    # ========= حفظ =========
+    df.to_excel(file_path, sheet_name=sheet_name, index=False)
+    log("🎉 خلص الإرسال كله")
 
-# ========= حفظ التحديث =========
-df.to_excel(file_path, sheet_name=sheet_name, index=False)
+except Exception as e:
+    log("❌ حصل خطأ قاتل:")
+    log(str(e))
 
-print("🎉 انتهى الإرسال")
-time.sleep(5)
-driver.quit()
+finally:
+    time.sleep(5)
+    try:
+        driver.quit()
+    except:
+        pass
