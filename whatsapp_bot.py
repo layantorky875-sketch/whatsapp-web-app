@@ -39,10 +39,10 @@ df = pd.read_excel(file_path, sheet_name=sheet_name)
 # ========= إرسال الرسائل =========
 for i, row in df.iterrows():
 
-    phone = str(row["Phone"]).strip()
-    name = str(row["Name"]).strip()
-    message = str(row["Message"]).strip()
-    sent = str(row["Sent"]).strip()
+    phone = str(row.iloc[0]).strip()    # A
+    name = str(row.iloc[1]).strip()     # B
+    message = str(row.iloc[2]).strip()  # C
+    sent = str(row.iloc[3]).strip()     # D
 
     if sent.lower() == "sent":
         continue
