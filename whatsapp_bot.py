@@ -7,10 +7,12 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
 
-# ========= إعداد Chrome (ثابت بدون كراش) =========
+# ========= إعداد Chrome =========
 profile_path = os.path.join(tempfile.gettempdir(), "wa_engine_profile")
 
 options = webdriver.ChromeOptions()
@@ -39,10 +41,10 @@ df = pd.read_excel(file_path, sheet_name=sheet_name)
 # ========= إرسال الرسائل =========
 for i, row in df.iterrows():
 
-    phone = str(row.iloc[0]).strip()    # A
-    name = str(row.iloc[1]).strip()     # B
-    message = str(row.iloc[2]).strip()  # C
-    sent = str(row.iloc[3]).strip()     # D
+    phone = str(row.iloc[0]).strip()    # Phone
+    name = str(row.iloc[1]).strip()     # Name
+    message = str(row.iloc[2]).strip()  # Message
+    sent = str(row.iloc[3]).strip()     # Sent
 
     if sent.lower() == "sent":
         continue
@@ -53,17 +55,16 @@ for i, row in df.iterrows():
     message = message.replace("{{name}}", name)
 
     driver.get(f"https://web.whatsapp.com/send?phone={phone}")
-    time.sleep(10)
 
     try:
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
         wait = WebDriverWait(driver, 30)
+
         box = wait.until(
             EC.presence_of_element_located(
-                By.XPATH, '//div[@contenteditable="true" and @role="textbox"]')
-             )
+                (By.XPATH, '//div[@contenteditable="true" and @role="textbox"]')
+            )
         )
+
         box.click()
         time.sleep(1)
         box.send_keys(message)
@@ -71,12 +72,12 @@ for i, row in df.iterrows():
         box.send_keys(Keys.ENTER)
 
         print(f"✅ Sent to {phone}")
-        df.at[i, "Sent"] = "Sent"
+        df.at[i, df.columns[3]] = "Sent"
 
-        time.sleep(7)  # أمان
+        time.sleep(7)
 
     except Exception as e:
-        print(f"❌ Failed: {phone}")
+        print(f"❌ Failed to send to {phone}")
         continue
 
 # ========= حفظ التحديث =========
