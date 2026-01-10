@@ -10,24 +10,23 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.11'
 
     - name: Install dependencies
       run: |
-        pip install -r requirements.txt
-        pip install pyinstaller
+        pip install pandas openpyxl selenium webdriver-manager pyinstaller
 
-    - name: Build EXE
+    - name: Build exe
       run: |
         pyinstaller --onefile whatsapp_bot.py
 
-    - name: Upload EXE
+    - name: Upload exe
       uses: actions/upload-artifact@v4
       with:
-        name: whatsapp-exe
+        name: whatsapp_bot
         path: dist/whatsapp_bot.exe
