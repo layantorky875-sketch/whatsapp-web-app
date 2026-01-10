@@ -1,0 +1,31 @@
+name: Build WhatsApp Sender EXE
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build EXE
+      run: |
+        npm install -g pkg
+        pkg index.js --targets node18-win-x64 --output WB_Sender_By_Torky.exe
+
+    - name: Upload EXE
+      uses: actions/upload-artifact@v4
+      with:
+        name: WB_Sender_By_Torky
+        path: WB_Sender_By_Torky.exe
