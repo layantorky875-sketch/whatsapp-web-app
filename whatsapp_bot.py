@@ -56,11 +56,18 @@ for i, row in df.iterrows():
     time.sleep(10)
 
     try:
-        box = driver.find_element(
-            By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]'
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        wait = WebDriverWait(driver, 30)
+        box = wait.until(
+            EC.presence_of_element_located(
+                By.XPATH, '//div[@contenteditable="true" and @role="textbox"]')
+             )
         )
         box.click()
+        time.sleep(1)
         box.send_keys(message)
+        time.sleep(1)
         box.send_keys(Keys.ENTER)
 
         print(f"✅ Sent to {phone}")
