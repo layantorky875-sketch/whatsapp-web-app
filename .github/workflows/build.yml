@@ -27,7 +27,7 @@ jobs:
         pyinstaller --onefile whatsapp_bot.py
 
     - name: Upload EXE
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: whatsapp-exe
         path: dist/whatsapp_bot.exe
