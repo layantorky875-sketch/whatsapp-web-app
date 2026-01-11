@@ -5,7 +5,7 @@ const XLSX = require("xlsx");
 const readline = require("readline");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 
-/* ================= PASSWORD ================= */
+/* =============== PASSWORD =============== */
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
@@ -13,30 +13,21 @@ const rl = readline.createInterface({
 
 function askPassword() {
   return new Promise((resolve) => {
-    rl.question("🔐 Enter password: ", (pass) => {
-      resolve(pass.trim());
-    });
+    rl.question("🔐 Enter password: ", (p) => resolve(p.trim()));
   });
 }
 
-/* ================= FIND CHROME ================= */
+/* =============== FIND CHROME =============== */
 function findChrome() {
-  const paths = [
+  const locations = [
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    path.join(
-      os.homedir(),
-      "AppData\\Local\\Google\\Chrome\\Application\\chrome.exe"
-    ),
+    path.join(os.homedir(), "AppData\\Local\\Google\\Chrome\\Application\\chrome.exe"),
   ];
-
-  for (const p of paths) {
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
+  return locations.find(p => fs.existsSync(p)) || null;
 }
 
-/* ================= LOAD EXCEL (SMART) ================= */
+/* =============== LOAD EXCEL (NO HEADER) =============== */
 function loadMessages() {
   const file = "WhatsApp Business.xlsm";
   if (!fs.existsSync(file)) {
@@ -51,39 +42,38 @@ function loadMessages() {
     process.exit();
   }
 
-  // اقرأ الشيت كله Array
   const sheet = XLSX.utils.sheet_to_json(ws, {
     header: 1,
     defval: "",
   });
 
-  // الهيدر في الصف الخامس (index 4)
-  const headerRow = sheet[4].map(h =>
-    String(h).trim().toLowerCase()
-  );
-
-  const phoneCol = headerRow.indexOf("phone");
-  const nameCol = headerRow.indexOf("name");
-  const messageCol = headerRow.indexOf("message");
-
-  if (phoneCol === -1 || messageCol === -1) {
-    console.log("❌ Phone or Message column not found");
-    console.log("📄 Columns found:", headerRow);
-    process.exit();
-  }
-
   const messages = [];
 
-  // البيانات من الصف السادس (index 5)
-  for (let i = 5; i < sheet.length; i++) {
-    const row = sheet[i];
-    if (!row) continue;
+  // نبدأ من الصف السادس (index 5)
+  for (let r = 5; r < sheet.length; r++) {
+    const row = sheet[r];
+    if (!row || row.length === 0) continue;
 
-    const phone = String(row[phoneCol] || "").replace(/\D/g, "");
-    const name = nameCol !== -1 ? String(row[nameCol] || "") : "";
-    const message = String(row[messageCol] || "");
+    let phone = "";
+    let message = "";
+    let name = "";
 
-    // لو صف فاضي → تجاهل
+    for (const cell of row) {
+      const val = String(cell).trim();
+
+      // رقم موبايل (10 أرقام أو أكتر)
+      if (!phone && /^\d{10,15}$/.test(val.replace(/\D/g, ""))) {
+        phone = val.replace(/\D/g, "");
+        continue;
+      }
+
+      // رسالة (أي نص أطول من 3 حروف)
+      if (!message && val.length > 3 && !/^\d+$/.test(val)) {
+        message = val;
+        continue;
+      }
+    }
+
     if (!phone || !message) continue;
 
     messages.push({
@@ -97,7 +87,7 @@ function loadMessages() {
   return messages;
 }
 
-/* ================= MAIN ================= */
+/* =============== MAIN =============== */
 (async () => {
   const pass = await askPassword();
   if (pass !== "58975") {
@@ -108,7 +98,7 @@ function loadMessages() {
 
   const chromePath = findChrome();
   if (!chromePath) {
-    console.log("❌ Chrome not found on this PC");
+    console.log("❌ Chrome not found");
     process.exit();
   }
 
@@ -128,26 +118,23 @@ function loadMessages() {
   });
 
   client.on("qr", () => {
-    console.log("🟢 First time only: Scan QR");
+    console.log("🟢 Scan QR (first time only)");
   });
 
   client.on("ready", async () => {
     console.log("✅ WhatsApp Ready");
 
     for (const m of messages) {
-      const chatId = m.phone + "@c.us";
-      const text = m.message.replace("{{name}}", m.name);
-
       try {
-        await client.sendMessage(chatId, text);
-        console.log("📤 Sent to", m.phone);
+        await client.sendMessage(m.phone + "@c.us", m.message);
+        console.log("📤 Sent:", m.phone);
         await new Promise(r => setTimeout(r, 20000));
-      } catch (e) {
+      } catch {
         console.log("❌ Failed:", m.phone);
       }
     }
 
-    console.log("🎉 Finished sending");
+    console.log("🎉 Finished");
     process.exit();
   });
 
