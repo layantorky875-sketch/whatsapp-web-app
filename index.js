@@ -2,54 +2,71 @@ const fs = require("fs");
 const XLSX = require("xlsx");
 const qrcode = require("qrcode-terminal");
 const { Client, LocalAuth } = require("whatsapp-web.js");
+const readline = require("readline");
 
-// ================== PASSWORD ==================
+// ================== SETTINGS ==================
 const PASSWORD = "58975";
+const EXCEL_FILE = "WhatsApp Business.xlsm";
+const SHEET_NAME = "Send";
+const HEADER_ROW_INDEX = 5; // الصف السادس (0-based)
 
-// ================== PASSWORD CHECK ==================
-const readline = require("readline").createInterface({
+// ================== PASSWORD INPUT ==================
+const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
 });
 
-readline.question("🔐 Enter password:\n> ", (input) => {
-  if (input !== PASSWORD) {
+rl.question("🔐 Enter password:\n> ", (pass) => {
+  if (pass !== PASSWORD) {
     console.log("❌ Wrong password");
     process.exit(0);
   }
-  readline.close();
+  rl.close();
   startBot();
 });
 
 // ================== MAIN ==================
 function startBot() {
-  const EXCEL_FILE = "WhatsApp Business.xlsm";
-
   if (!fs.existsSync(EXCEL_FILE)) {
     console.log("❌ Excel file not found");
     process.exit(0);
   }
 
-  // ===== Read Excel =====
+  // ===== Read Excel (xlsm OK) =====
   const workbook = XLSX.readFile(EXCEL_FILE);
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const sheet = workbook.Sheets[SHEET_NAME];
+
+  if (!sheet) {
+    console.log("❌ Sheet 'Send' not found");
+    process.exit(0);
+  }
 
   const rows = XLSX.utils.sheet_to_json(sheet, {
     header: 1,
     defval: ""
   });
 
-  const HEADER_ROW = 5; // الصف السادس
-  const headers = rows[HEADER_ROW].map(h =>
+  if (rows.length <= HEADER_ROW_INDEX) {
+    console.log("❌ No data rows found");
+    process.exit(0);
+  }
+
+  // ===== Read header names from row 6 =====
+  const headers = rows[HEADER_ROW_INDEX].map(h =>
     h.toString().trim().toLowerCase()
   );
 
+  console.log("📄 Columns found:", headers);
+
+  // ===== Detect columns by NAME =====
   const phoneCol = headers.findIndex(h =>
-    h.includes("phone") || h.includes("رقم")
+    h.includes("phone") || h.includes("mobile") || h.includes("رقم")
   );
+
   const messageCol = headers.findIndex(h =>
-    h.includes("message") || h.includes("رسالة")
+    h.includes("message") || h.includes("msg") || h.includes("رسالة")
   );
+
   const nameCol = headers.findIndex(h =>
     h.includes("name") || h.includes("اسم")
   );
@@ -59,9 +76,10 @@ function startBot() {
     process.exit(0);
   }
 
-  const data = rows.slice(HEADER_ROW + 1);
+  // ===== Read data starting from row 7 =====
+  const dataRows = rows.slice(HEADER_ROW_INDEX + 1);
 
-  const contacts = data
+  const contacts = dataRows
     .filter(r => r[phoneCol] && r[messageCol])
     .map(r => ({
       phone: r[phoneCol].toString().replace(/\D/g, ""),
@@ -70,7 +88,7 @@ function startBot() {
     }));
 
   if (contacts.length === 0) {
-    console.log("❌ No data found");
+    console.log("❌ No valid data to send");
     process.exit(0);
   }
 
@@ -95,9 +113,10 @@ function startBot() {
 
     for (const c of contacts) {
       try {
-        await client.sendMessage(`${c.phone}@c.us`, c.message);
+        let finalMsg = c.message.replace(/{{name}}/gi, c.name);
+        await client.sendMessage(`${c.phone}@c.us`, finalMsg);
         console.log(`📤 Sent → ${c.phone}`);
-        await delay(4000); // تأخير لتجنب الحظر
+        await delay(4000); // أمان ضد الحظر
       } catch (err) {
         console.log(`❌ Failed → ${c.phone}`);
         console.log(err.message);
