@@ -1,126 +1,129 @@
 const fs = require("fs");
+const path = require("path");
+const os = require("os");
 const XLSX = require("xlsx");
-const qrcode = require("qrcode-terminal");
-const { Client, LocalAuth } = require("whatsapp-web.js");
 const readline = require("readline");
+const { Client, LocalAuth } = require("whatsapp-web.js");
 
-const PASSWORD = "58975";
-const EXCEL_FILE = "WhatsApp Business.xlsm";
-const SHEET_NAME = "Send";
-
-// ================= PASSWORD =================
+/* ================= PASSWORD ================= */
 const rl = readline.createInterface({
   input: process.stdin,
-  output: process.stdout
+  output: process.stdout,
 });
 
-rl.question("🔐 Enter password:\n> ", (pass) => {
-  if (pass !== PASSWORD) {
-    console.log("❌ Wrong password");
-    process.exit(0);
+function askPassword() {
+  return new Promise((resolve) => {
+    rl.question("🔐 Enter password: ", (pass) => {
+      resolve(pass.trim());
+    });
+  });
+}
+
+/* ================= FIND CHROME ================= */
+function findChrome() {
+  const paths = [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    path.join(
+      os.homedir(),
+      "AppData\\Local\\Google\\Chrome\\Application\\chrome.exe"
+    ),
+  ];
+
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
   }
-  rl.close();
-  startBot();
-});
+  return null;
+}
 
-function startBot() {
-  if (!fs.existsSync(EXCEL_FILE)) {
+/* ================= LOAD EXCEL ================= */
+function loadMessages() {
+  const file = "WhatsApp Business.xlsm";
+  if (!fs.existsSync(file)) {
     console.log("❌ Excel file not found");
-    process.exit(0);
+    process.exit();
   }
 
-  const wb = XLSX.readFile(EXCEL_FILE, { cellText: true });
-  const sheet = wb.Sheets[SHEET_NAME];
-  if (!sheet) {
-    console.log("❌ Sheet Send not found");
-    process.exit(0);
+  const wb = XLSX.readFile(file);
+  const ws = wb.Sheets["Send"];
+  if (!ws) {
+    console.log("❌ Sheet 'Send' not found");
+    process.exit();
   }
 
-  const rows = XLSX.utils.sheet_to_json(sheet, {
-    header: 1,
-    defval: ""
+  const data = XLSX.utils.sheet_to_json(ws, {
+    range: 5, // start from row 6
+    defval: "",
   });
 
-  let headerRowIndex = -1;
-  let phoneCol = -1;
-  let messageCol = -1;
-  let nameCol = -1;
-
-  // 🔍 Find header row automatically
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i].map(c => c.toString().trim().toLowerCase());
-
-    row.forEach((cell, idx) => {
-      if (cell.includes("phone") || cell.includes("رقم")) phoneCol = idx;
-      if (cell.includes("message") || cell.includes("رسالة")) messageCol = idx;
-      if (cell.includes("name") || cell.includes("اسم")) nameCol = idx;
-    });
-
-    if (phoneCol !== -1 && messageCol !== -1) {
-      headerRowIndex = i;
-      break;
+  const messages = [];
+  for (const row of data) {
+    if (row.Phone && row.Message) {
+      messages.push({
+        phone: String(row.Phone).replace(/\D/g, ""),
+        name: row.Name || "",
+        message: row.Message,
+      });
     }
   }
 
-  if (headerRowIndex === -1) {
-    console.log("❌ Could not detect header row automatically");
-    process.exit(0);
+  console.log(`📊 Loaded ${messages.length} messages`);
+  return messages;
+}
+
+/* ================= MAIN ================= */
+(async () => {
+  const pass = await askPassword();
+  if (pass !== "58975") {
+    console.log("❌ Wrong password");
+    process.exit();
+  }
+  rl.close();
+
+  const chromePath = findChrome();
+  if (!chromePath) {
+    console.log("❌ Chrome not found on this PC");
+    process.exit();
   }
 
-  console.log("✅ Header found at row:", headerRowIndex + 1);
-  console.log("📌 Phone column:", phoneCol + 1);
-  console.log("📌 Message column:", messageCol + 1);
-  if (nameCol !== -1) console.log("📌 Name column:", nameCol + 1);
-
-  const data = rows.slice(headerRowIndex + 1)
-    .filter(r => r[phoneCol] && r[messageCol])
-    .map(r => ({
-      phone: r[phoneCol].toString().replace(/\D/g, ""),
-      message: r[messageCol].toString(),
-      name: nameCol !== -1 ? r[nameCol].toString() : ""
-    }));
-
-  if (data.length === 0) {
-    console.log("❌ No data rows found");
-    process.exit(0);
+  const messages = loadMessages();
+  if (messages.length === 0) {
+    console.log("⚠️ No messages to send");
+    process.exit();
   }
-
-  console.log(`📊 Loaded ${data.length} messages`);
 
   const client = new Client({
     authStrategy: new LocalAuth({ clientId: "torky" }),
     puppeteer: {
       headless: false,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    }
-  });
-
-  client.on("qr", qr => {
-    console.log("🟢 Scan QR");
-    qrcode.generate(qr, { small: true });
+      executablePath: chromePath,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    },
   });
 
   client.on("ready", async () => {
     console.log("✅ WhatsApp Ready");
 
-    for (const c of data) {
+    for (const m of messages) {
+      const chatId = m.phone + "@c.us";
+      const text = m.message.replace("{{name}}", m.name);
+
       try {
-        const msg = c.message.replace(/{{name}}/gi, c.name);
-        await client.sendMessage(`${c.phone}@c.us`, msg);
-        console.log("📤 Sent →", c.phone);
-        await sleep(4000);
+        await client.sendMessage(chatId, text);
+        console.log("📤 Sent to", m.phone);
+        await new Promise((r) => setTimeout(r, 20000));
       } catch (e) {
-        console.log("❌ Error:", e.message);
-        break;
+        console.log("❌ Failed:", m.phone);
       }
     }
 
-    console.log("🎉 Finished");
+    console.log("🎉 Finished sending");
+    process.exit();
+  });
+
+  client.on("qr", () => {
+    console.log("🟢 First time only: Scan QR");
   });
 
   client.initialize();
-}
-
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
+})();
