@@ -35,39 +35,36 @@ function loadMessages() {
     process.exit();
   }
 
-  const wb = XLSX.readFile(file);
+  const wb = XLSX.readFile(file, { cellText: true, cellDates: false });
   const ws = wb.Sheets["Send"];
   if (!ws) {
     console.log("❌ Sheet 'Send' not found");
     process.exit();
   }
 
-  const sheet = XLSX.utils.sheet_to_json(ws, {
-    header: 1,
-    defval: "",
-  });
-
+  const range = XLSX.utils.decode_range(ws["!ref"]);
   const messages = [];
 
-  // نبدأ من الصف السادس (index 5)
-  for (let r = 5; r < sheet.length; r++) {
-    const row = sheet[r];
-    if (!row || row.length === 0) continue;
-
+  // نبدأ من الصف السادس (row index = 5)
+  for (let r = 5; r <= range.e.r; r++) {
     let phone = "";
     let message = "";
     let name = "";
 
-    for (const cell of row) {
-      const val = String(cell).trim();
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cellRef = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[cellRef];
+      if (!cell || !cell.v) continue;
 
-      // رقم موبايل (10 أرقام أو أكتر)
+      const val = String(cell.v).trim();
+
+      // رقم دولي
       if (!phone && /^\d{10,15}$/.test(val.replace(/\D/g, ""))) {
         phone = val.replace(/\D/g, "");
         continue;
       }
 
-      // رسالة (أي نص أطول من 3 حروف)
+      // رسالة (نص مش رقم)
       if (!message && val.length > 3 && !/^\d+$/.test(val)) {
         message = val;
         continue;
@@ -76,11 +73,7 @@ function loadMessages() {
 
     if (!phone || !message) continue;
 
-    messages.push({
-      phone,
-      name,
-      message,
-    });
+    messages.push({ phone, name, message });
   }
 
   console.log(`📊 Loaded ${messages.length} messages`);
