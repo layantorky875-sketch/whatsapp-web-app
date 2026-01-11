@@ -26,7 +26,8 @@ const data = XLSX.utils.sheet_to_json(sheet);
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-        headless: true
+        headless: false,
+        executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     }
 });
 
