@@ -4,13 +4,11 @@ const qrcode = require("qrcode-terminal");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const readline = require("readline");
 
-// ================== SETTINGS ==================
 const PASSWORD = "58975";
 const EXCEL_FILE = "WhatsApp Business.xlsm";
 const SHEET_NAME = "Send";
-const HEADER_ROW_INDEX = 5; // الصف السادس (0-based)
 
-// ================== PASSWORD INPUT ==================
+// ================= PASSWORD =================
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
@@ -25,19 +23,16 @@ rl.question("🔐 Enter password:\n> ", (pass) => {
   startBot();
 });
 
-// ================== MAIN ==================
 function startBot() {
   if (!fs.existsSync(EXCEL_FILE)) {
     console.log("❌ Excel file not found");
     process.exit(0);
   }
 
-  // ===== Read Excel (xlsm OK) =====
-  const workbook = XLSX.readFile(EXCEL_FILE);
-  const sheet = workbook.Sheets[SHEET_NAME];
-
+  const wb = XLSX.readFile(EXCEL_FILE, { cellText: true });
+  const sheet = wb.Sheets[SHEET_NAME];
   if (!sheet) {
-    console.log("❌ Sheet 'Send' not found");
+    console.log("❌ Sheet Send not found");
     process.exit(0);
   }
 
@@ -46,40 +41,38 @@ function startBot() {
     defval: ""
   });
 
-  if (rows.length <= HEADER_ROW_INDEX) {
-    console.log("❌ No data rows found");
+  let headerRowIndex = -1;
+  let phoneCol = -1;
+  let messageCol = -1;
+  let nameCol = -1;
+
+  // 🔍 Find header row automatically
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i].map(c => c.toString().trim().toLowerCase());
+
+    row.forEach((cell, idx) => {
+      if (cell.includes("phone") || cell.includes("رقم")) phoneCol = idx;
+      if (cell.includes("message") || cell.includes("رسالة")) messageCol = idx;
+      if (cell.includes("name") || cell.includes("اسم")) nameCol = idx;
+    });
+
+    if (phoneCol !== -1 && messageCol !== -1) {
+      headerRowIndex = i;
+      break;
+    }
+  }
+
+  if (headerRowIndex === -1) {
+    console.log("❌ Could not detect header row automatically");
     process.exit(0);
   }
 
-  // ===== Read header names from row 6 =====
-  const headers = rows[HEADER_ROW_INDEX].map(h =>
-    h.toString().trim().toLowerCase()
-  );
+  console.log("✅ Header found at row:", headerRowIndex + 1);
+  console.log("📌 Phone column:", phoneCol + 1);
+  console.log("📌 Message column:", messageCol + 1);
+  if (nameCol !== -1) console.log("📌 Name column:", nameCol + 1);
 
-  console.log("📄 Columns found:", headers);
-
-  // ===== Detect columns by NAME =====
-  const phoneCol = headers.findIndex(h =>
-    h.includes("phone") || h.includes("mobile") || h.includes("رقم")
-  );
-
-  const messageCol = headers.findIndex(h =>
-    h.includes("message") || h.includes("msg") || h.includes("رسالة")
-  );
-
-  const nameCol = headers.findIndex(h =>
-    h.includes("name") || h.includes("اسم")
-  );
-
-  if (phoneCol === -1 || messageCol === -1) {
-    console.log("❌ Phone or Message column not found");
-    process.exit(0);
-  }
-
-  // ===== Read data starting from row 7 =====
-  const dataRows = rows.slice(HEADER_ROW_INDEX + 1);
-
-  const contacts = dataRows
+  const data = rows.slice(headerRowIndex + 1)
     .filter(r => r[phoneCol] && r[messageCol])
     .map(r => ({
       phone: r[phoneCol].toString().replace(/\D/g, ""),
@@ -87,14 +80,13 @@ function startBot() {
       name: nameCol !== -1 ? r[nameCol].toString() : ""
     }));
 
-  if (contacts.length === 0) {
-    console.log("❌ No valid data to send");
+  if (data.length === 0) {
+    console.log("❌ No data rows found");
     process.exit(0);
   }
 
-  console.log(`📊 Loaded ${contacts.length} contacts`);
+  console.log(`📊 Loaded ${data.length} messages`);
 
-  // ===== WhatsApp Client =====
   const client = new Client({
     authStrategy: new LocalAuth({ clientId: "torky" }),
     puppeteer: {
@@ -103,7 +95,7 @@ function startBot() {
     }
   });
 
-  client.on("qr", (qr) => {
+  client.on("qr", qr => {
     console.log("🟢 Scan QR");
     qrcode.generate(qr, { small: true });
   });
@@ -111,26 +103,24 @@ function startBot() {
   client.on("ready", async () => {
     console.log("✅ WhatsApp Ready");
 
-    for (const c of contacts) {
+    for (const c of data) {
       try {
-        let finalMsg = c.message.replace(/{{name}}/gi, c.name);
-        await client.sendMessage(`${c.phone}@c.us`, finalMsg);
-        console.log(`📤 Sent → ${c.phone}`);
-        await delay(4000); // أمان ضد الحظر
-      } catch (err) {
-        console.log(`❌ Failed → ${c.phone}`);
-        console.log(err.message);
+        const msg = c.message.replace(/{{name}}/gi, c.name);
+        await client.sendMessage(`${c.phone}@c.us`, msg);
+        console.log("📤 Sent →", c.phone);
+        await sleep(4000);
+      } catch (e) {
+        console.log("❌ Error:", e.message);
         break;
       }
     }
 
-    console.log("🎉 Finished sending");
+    console.log("🎉 Finished");
   });
 
   client.initialize();
 }
 
-// ================== DELAY ==================
-function delay(ms) {
-  return new Promise(res => setTimeout(res, ms));
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
 }
